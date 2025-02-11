@@ -4,7 +4,9 @@ import numpy as np
 import random
 import time
 
-print("Git test")
+
+
+print("Git test 2") 
 # Define parameters
 N = 15  # Number of nuclear spins in the bath
 gamma_e = 1.0  # Electron gyromagnetic ratio (units chosen arbitrarily)
