@@ -33,6 +33,7 @@ Sp = tensor(sigmap(), qeye([2]*(N)))  # Raising operator
 
 
 
+
 def bath_op(spin_index, op):
     """
     Creates a tensor product operator for a single nuclear spin in the bath.
@@ -84,7 +85,7 @@ def define_initial_state(N):
 
 def define_hamiltonian(A, B, gamma_e, gamma_n, N, tlist):
     """
-    Define the Hamiltonian for the system.
+    Define the Hamiltonian for the system as a QobjEvo.
     
     Parameters:
         A (float): Hyperfine coupling strength.
@@ -111,7 +112,8 @@ def define_hamiltonian(A, B, gamma_e, gamma_n, N, tlist):
             Sz * bath_op(i, sigmaz())
         )
     
-    return H_zeeman_e + H_zeeman_n + H_hyperfine
+    H = H_zeeman_e + H_zeeman_n + H_hyperfine
+    return QobjEvo(H)
 
 def calculate_expectation_values(A, B, gamma_e, gamma_n, N, tlist, psi0, observables):
     """
