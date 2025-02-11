@@ -3,6 +3,10 @@ from qutip import *
 import numpy as np
 import random
 import time
+from joblib import Parallel, delayed
+from multiprocessing import Pool
+import dask
+from dask import delayed
 
 ###############################################################################################################################################################################################################################
 
@@ -21,7 +25,7 @@ n_steps = 1000  # Number of time steps
 
 ###############################################################################################################################################################################################################################
 
-# Create time array for simulation
+# define time array for simulation
 tlist = np.linspace(0, t_max, n_steps)
 
 # Define spin operators for central electron spin
@@ -32,29 +36,69 @@ Sm = tensor(sigmam(), qeye([2]*(N)))  # Lowering operator
 Sp = tensor(sigmap(), qeye([2]*(N)))  # Raising operator
 
 
-# Function to create bath spin operators
+
 def bath_op(spin_index, op):
+    """
+    Creates a tensor product operator for a single nuclear spin in the bath.
+
+    Parameters:
+        spin_index (int): Index of the nuclear spin to apply the operator to.
+        op (Qobj): QuTiP operator to apply to the specified spin.
+
+    Returns:
+        Qobj: Tensor product operator.
+    """
     return tensor([qeye(2)] + [op if i == spin_index else qeye(2) for i in range(N)])
 
+def define_observables(N):
+    """
+    Define observables to track during the simulation.
+    
+    Parameters:
+        N (int): Number of nuclear spins in the bath.
+    
+    Returns:
+        list: List of observables to track.
+    """
 
-# Define observables to track:
+    # Total nuclear spin operator
+    total_nuclear_z = sum(bath_op(i, sigmaz()) for i in range(N))
 
-# Total nuclear spin operator
-total_nuclear_z = sum(bath_op(i, sigmaz()) for i in range(N))
+    # Define observables to track
+    observables = [
+        Sz,  # Electron spin z-component
+        total_nuclear_z  # Total nuclear spin z-component
+    ]
 
-#Define the observables we wish to know at each timestep of the simulation. These are Qutip operators that will be used to calculate expectation values.
-observables = [
-    Sz,  # Electron spin z-component
-    total_nuclear_z  # Total nuclear spin z-component
-]
+    return observables
 
-# Set initial state: electron spin up, nuclear spins down
-electron_initial = basis(2, 1)  # Spin up state
-nuclear_initial = [basis(2, random.randint(0,1)) for _ in range(N)]  # Random nuclear spins up/down
-psi0 = tensor([electron_initial] + nuclear_initial)
+def define_initial_state(N):
+    """
+    Define the initial state of the system.
+    
+    Parameters: 
+        N (int): Number of nuclear spins in the bath.
+    
+    Returns: Qobj: Initial state of the system.
+    """
 
+    electron_initial = basis(2, 1)  # Spin up state
+    nuclear_initial = [basis(2, random.randint(0,1)) for _ in range(N)]  # Random nuclear spins up/down
+    return tensor([electron_initial] + nuclear_initial)
 
-def create_hamiltonian(A, B, gamma_e, gamma_n, N, tlist):
+def define_hamiltonian(A, B, gamma_e, gamma_n, N, tlist):
+    """
+    Define the Hamiltonian for the system.
+    
+    Parameters:
+        A (float): Hyperfine coupling strength.
+        B (float): External magnetic field.
+        gamma_e (float): Electron gyromagnetic ratio.
+        gamma_n (float): Nuclear gyromagnetic ratio.
+        N (int): Number of nuclear spins in the bath.
+        tlist (array): Time array for simulation. (Currently unused, but can be used for time-dependent Hamiltonians)
+    """
+    
     H_zeeman_e = -gamma_e * B * Sz
 
     # Zeeman interactions for nuclear spins
@@ -73,10 +117,25 @@ def create_hamiltonian(A, B, gamma_e, gamma_n, N, tlist):
     
     return H_zeeman_e + H_zeeman_n + H_hyperfine
 
+def calculate_expectation_values(A, B, gamma_e, gamma_n, N, tlist, psi0, observables):
+    """
+    Calculate the expectation values of observables for a given set of parameters
 
-def calculate_expectation_values(A, B=B, gamma_e=gamma_e, gamma_n=gamma_n, N=N, tlist=tlist, psi0=psi0):
+    Parameters:
+        A (float): Hyperfine coupling strength.
+        B (float): External magnetic field.
+        gamma_e (float): Electron gyromagnetic ratio.
+        gamma_n (float): Nuclear gyromagnetic ratio.
+        N (int): Number of nuclear spins in the bath.
+        tlist (array): Time array for simulation.
+        psi0 (Qobj): Initial state of the system.
+        observables (list): List of observables to track.    
+    
+    Returns:
+        tuple: Tuple of expectation values for electron and nuclear spin components.
+    """
 
-    H=create_hamiltonian(A,B,gamma_e,gamma_n,N, tlist)
+    H=define_hamiltonian(A,B,gamma_e,gamma_n,N, tlist)
 
     output = sesolve(H, psi0, tlist, observables, options={'progress_bar': False})
 
@@ -90,10 +149,15 @@ def calculate_expectation_values(A, B=B, gamma_e=gamma_e, gamma_n=gamma_n, N=N, 
 # Record start time
 t0 = time.time()
 
-# Use loky_pmap to parallelize the simulations
-results = loky_pmap(calculate_expectation_values, A_values, task_args=(B, gamma_e, gamma_n, N, tlist, psi0))  
-# Equivalent to result = [task(value, *task_args, **task_kwargs) for value in values]
 
+psi0=define_initial_state(N)
+observables=define_observables(N)
+
+# Use loky_pmap to parallelize the simulations
+results = loky_pmap(calculate_expectation_values, A_values, task_args=(B, gamma_e, gamma_n, N, tlist, psi0, observables))
+
+
+# Record end time
 print(f"Time taken: {time.time() - t0:.2f} seconds")
 
 # Plotting the results
