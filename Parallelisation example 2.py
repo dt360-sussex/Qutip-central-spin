@@ -3,10 +3,6 @@ from qutip import *
 import numpy as np
 import random
 import time
-from joblib import Parallel, delayed
-from multiprocessing import Pool
-import dask
-from dask import delayed
 
 ###############################################################################################################################################################################################################################
 
