@@ -159,7 +159,7 @@ results = loky_pmap(calculate_expectation_values, A_values, task_args=(B, gamma_
 
 # Record end time
 print(f"Time taken: {time.time() - t0:.2f} seconds")
-
+ 
 # Plotting the results
 fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 
