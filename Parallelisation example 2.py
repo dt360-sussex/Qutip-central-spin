@@ -7,7 +7,7 @@ import time
 ###############################################################################################################################################################################################################################
 
 # Define parameters
-N = 15  # Number of nuclear spins in the bath
+N = 5  # Number of nuclear spins in the bath
 gamma_e = 1.0  # Electron gyromagnetic ratio (units chosen arbitrarily)
 gamma_n = 0.01  # Nuclear gyromagnetic ratio (typically << gamma_e)
 B = 1  # External magnetic field in z-direction

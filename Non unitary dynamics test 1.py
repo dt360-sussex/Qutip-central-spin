@@ -8,16 +8,33 @@ from scipy.constants import pi
 # Define parameters
 # Using units where hbar = 1, all parameters below are in Hz
 
-N = 6  # Number of nuclear spins in the bath
-A= 200e3
+N = 2  # Number of nuclear spins in the bath
+A= 200e3    #Hyperfine coupling energy
 nu_e = 15e6   # Electron Larmor frequency
 nu_n = 2e6   # Nuclear Larmor frequency
 
 nu_RF = 1.9e6   # RF carrier frequency
-nu_RF_Amplitude=2.5e4
+nu_RF_Amplitude=2.5e4   # RF amplitude
 
 t_max = 20e-6  # Simulation time
 n_steps = 5000  # Number of time steps
+
+#Define the parameter sweeps for each simulation 
+num_params = 1                   # Number of parameters to sweep over (0, 1, or 2)
+param_names = ['nu_RF_Amplitude', 'nu_RF']     # Names of parameters to sweep over, will only sweep over the first num_params parameters
+param_ranges = [(0, 5e4, 40), (0, 5e6, 40)]  # List of tuples, where each tuple defines the range (start, stop, num) for a parameter
+
+# num_params = 2                   # Number of parameters to sweep over (0, 1, or 2)
+# param_names = ['nu_RF_Amplitude', 'nu_RF']     # Names of parameters to sweep over, will only sweep over the first num_params parameters
+# param_ranges = [(0, 5e4, 40), (0, 5e6, 40)]  # List of tuples, where each tuple defines the range (start, stop, num) for a parameter
+
+# Decoherence parameters
+unitary_evolution = True # Set to True to use sesolve for unitary evolution, False to use mcsolve for non-unitary evolution
+n_traj = 200 # Number of trajectories for Monte Carlo simulation
+gamma_relax_e       =   1e4 
+gamme_dephase_e     =   1e4
+gamma_relax_n       =   1e4
+gamma_dephase_n     =   1e4
 
 ###############################################################################################################################################################################################################################
 # define time array for simulation
@@ -151,19 +168,78 @@ def define_hamiltonian(nu_RF_Amplitude,A, nu_e, nu_n, N,nu_RF, tlist):
     )
 
     return  H
- 
-def calculate_expectation_values(params, tlist, observables):
+
+def define_collapse_operators(N, gamma_relax_e=0, gamma_dephase_e=0, gamma_relax_n=0, gamma_dephase_n=0):
+    """
+    Define collapse operators for the system.
+    
+    Parameters:
+        N (int): Number of nuclear spins in the bath.
+        gamma_relax_e (float): Electron relaxation rate.
+        gamma_dephase_e (float): Electron Dephasing rate.
+        gamma_relax_n (float): Nuclear relaxation rate.
+        gamma_dephase_n (float): Nuclear Dephasing rate.
+    
+    Returns:
+        list: List of collapse operators.
+    """
+    
+    # Define relaxation and dephasing collapse operators for the electron spin
+    c_ops = []
+    c_ops.append(np.sqrt(gamma_relax_e) * Sz)
+    c_ops.append(np.sqrt(gamma_dephase_e) * Sx)
+    c_ops.append(np.sqrt(gamma_dephase_e) * Sy)
+    c_ops.append(np.sqrt(gamma_dephase_e) * Sz)
+    
+    # Define relaxation collapse operators for the nuclear spins
+    for i in range(N):
+        c_ops.append(np.sqrt(gamma_relax_n) * bath_op(i, Iz))
+        c_ops.append(np.sqrt(gamma_dephase_n) * bath_op(i, Ix))
+        c_ops.append(np.sqrt(gamma_dephase_n) * bath_op(i, Iy))
+        c_ops.append(np.sqrt(gamma_dephase_n) * bath_op(i, Iz))
+    return c_ops
+
+def define_params_list(base_params, num_params, param_names, param_ranges):
+    """
+    Define the parameters for each simulation, sweeping over a specified number of parameters.
+
+    Parameters:
+        num_params (int): Number of parameters to sweep over (0, 1, or 2).
+        param_names (list): List of parameter names to sweep over. Must match the number of parameters.
+        param_ranges (list): List of tuples, where each tuple defines the range (start, stop, num) for a parameter.
+    
+    Returns:
+        list: List of dictionaries, where each dictionary contains a set of parameters for a simulation.
+    """
+    
+    params_list = []
+
+    if num_params == 0:
+        return [base_params]
+    
+    elif num_params == 1:
+        for swept_param in np.linspace(param_ranges[0][0], param_ranges[0][1], param_ranges[0][2]):
+            params = base_params.copy()
+            params[param_names[0]] = swept_param
+            params_list.append(params)
+    
+    elif num_params == 2:
+        for swept_param1 in np.linspace(param_ranges[0][0], param_ranges[0][1], param_ranges[0][2]):
+            for swept_param2 in np.linspace(param_ranges[1][0], param_ranges[1][1], param_ranges[1][2]):
+                params = base_params.copy()
+                params[param_names[0]] = swept_param1
+                params[param_names[1]] = swept_param2
+                params_list.append(params)
+
+    return params_list
+
+def calculate_expectation_values(params, tlist, observables, unitary_evolution=True):
     """
     Calculate the expectation values of observables for a given set of parameters
 
     Parameters:
-        A (float): Hyperfine coupling strength.
-        B (float): External magnetic field.
-        gamma_e (float): Electron gyromagnetic ratio.
-        gamma_n (float): Nuclear gyromagnetic ratio.
-        N (int): Number of nuclear spins in the bath.
+        params (dict): Dictionary of parameters for the simulation.
         tlist (array): Time array for simulation.
-        psi0 (Qobj): Initial state of the system.
         observables (list): List of observables to track.    
     
     Returns:
@@ -179,15 +255,26 @@ def calculate_expectation_values(params, tlist, observables):
     N = params['N']
     psi0 = params['psi0']
 
+    n_traj = params['n_traj']
+    gamma_dephase_e = params['gamma_dephase_e']
+    gamma_relax_e = params['gamma_relax_e']
+    gamma_dephase_n = params['gamma_dephase_n']
+    gamma_relax_n = params['gamma_relax_n']
+
     # Call the time dependent hamiltonian with the given parameters
     H = define_hamiltonian(nu_RF_Amplitude, A, nu_e, nu_n, N, nu_RF, tlist)
 
-    output = sesolve(H, psi0, tlist, observables, options={'progress_bar': False, 'nsteps': 10000, 'rtol': 1e-8, 'atol': 1e-8})
+    collapse_operators=define_collapse_operators(N, gamma_relax_e, gamma_dephase_e, gamma_relax_n, gamma_dephase_n)
+
+    if unitary_evolution:
+        output = sesolve(H, psi0, tlist, observables, options={'progress_bar': False, 'nsteps': 10000, 'rtol': 1e-8, 'atol': 1e-8})
+    else:
+        output = mcsolve(H, psi0, tlist, collapse_operators, observables,  n_traj, options={'progress_bar': True, 'nsteps': 10000, 'rtol': 1e-8, 'atol': 1e-8})
 
     # Extract expectation values
     return params, output.expect[0], output.expect[1], output.expect[2], output.expect[3], output.expect[4], output.expect[5]
 
-def plot_results(results, tlist):
+def plot_results(results, tlist, num_params, param_names):
     """
     Plot the simulation results.
     
@@ -232,6 +319,11 @@ def plot_results(results, tlist):
 
     plt.tight_layout()
     plt.show()
+
+    if num_params == 1:
+        plot_results_1d(results, param_names[0])
+    elif num_params == 2:
+        plot_results_2d(results, param_names[0], param_names[1])
 
 def plot_results_2d(results, x_axis_name, y_axis_name):
     # Extract unique RF frequencies and amplitudes from params
@@ -308,26 +400,35 @@ def plot_results_bloch_sphere(results, result_idx, nuclear_idx):
     b.render()
     plt.show()
 
+
+
 psi0=define_initial_state(N)
 observables=define_observables(N)
 
-#Define the parameters for each simulation, as a list of dictionaries. 
-params_list=[]
-for nu_RF in np.linspace(1.5e6, 2.5e6, 20):
-    for nu_n in np.linspace(1.5e6, 2.5e6, 20):
-        params_list.append({'nu_RF_Amplitude': nu_RF_Amplitude, 'A': A, 'nu_e': nu_e, 'nu_n': nu_n, 'nu_RF': nu_RF, 'N': N,  'psi0': psi0})
+base_params = {
+    'nu_RF_Amplitude': nu_RF_Amplitude,
+    'A': A,
+    'nu_e': nu_e,
+    'nu_n': nu_n,
+    'nu_RF': nu_RF,
+    'N': N,
+    'psi0': psi0,
+    'n_traj': n_traj,
+    'gamma_dephase_e': gamme_dephase_e,
+    'gamma_relax_e': gamma_relax_e,
+    'gamma_dephase_n': gamma_dephase_n,
+    'gamma_relax_n': gamma_relax_n
+}
 
-# Use loky_pmap to parallelize the simulations
-results = loky_pmap(calculate_expectation_values, params_list,task_args=(tlist,observables), progress_bar=True)
+params_list = define_params_list(base_params, num_params, param_names, param_ranges)
 
-plot_results(results, tlist)
+results = loky_pmap(calculate_expectation_values, params_list,task_args=(tlist,observables, unitary_evolution), progress_bar=True)
 
-# plot_results_1d(results, 'nu_n')
-plot_results_2d(results, 'nu_RF', 'nu_n')
+plot_results(results, tlist, num_params, param_names)
+
 # plot_spin_bloch_sphere(results, 0, 0)
 
 #To do
 #Dipole dipole interactions
 #Explore more interesting initial states
-#Use mcsolve to simulate dephasing and relaxation
 #Iterate over many cycles of mcsolve where the electron spin is reset, in order to simulate optical pumping of the spins.
