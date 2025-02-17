@@ -58,13 +58,15 @@ def define_observables(N):
         list: List of observables to track.
     """
 
-    # Total nuclear spin operator
-    total_nuclear_z = sum(bath_op(i, sigmaz()) for i in range(N))
 
     # Define observables to track
     observables = [
+        Sx,
+        Sy,
         Sz,  # Electron spin z-component
-        total_nuclear_z  # Total nuclear spin z-component
+        sum(bath_op(i, sigmax()) for i in range(N)),
+        sum(bath_op(i, sigmay()) for i in range(N)),
+        sum(bath_op(i, sigmaz()) for i in range(N))
     ]
 
     return observables
@@ -112,8 +114,11 @@ def define_hamiltonian(A, B, gamma_e, gamma_n, N, tlist):
             Sz * bath_op(i, sigmaz())
         )
     
+    H_rf_x = bath_op(i, sigmax())
+    H_rf_y = bath_op(i, sigmay())
+
     H = H_zeeman_e + H_zeeman_n + H_hyperfine
-    return QobjEvo(H)
+    return QobjEvo([H,[H_rf_x],[H_rf_y, ]])
 
 def calculate_expectation_values(A, B, gamma_e, gamma_n, N, tlist, psi0, observables):
     """
@@ -138,9 +143,13 @@ def calculate_expectation_values(A, B, gamma_e, gamma_n, N, tlist, psi0, observa
     output = sesolve(H, psi0, tlist, observables, options={'progress_bar': False})
 
     # Extract expectation values
-    electron_z = output.expect[0]
-    nuclear_z = output.expect[1]
-    return electron_z, nuclear_z
+    electron_x = output.expect[0]
+    electron_y = output.expect[1]
+    electron_z = output.expect[2]
+    nuclear_x = output.expect[3]
+    nuclear_y = output.expect[4]
+    nuclear_z = output.expect[5]
+    return electron_x, electron_y, electron_z, nuclear_x, nuclear_y, nuclear_z
 
 
 
@@ -162,12 +171,16 @@ print(f"Time taken: {time.time() - t0:.2f} seconds")
 fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 
 for i, A in enumerate(A_values):
-    electron_z, nuclear_z = results[i]
+    electron_x, electron_y, electron_z, nuclear_x, nuclear_y, nuclear_z = results[i]
 
-    axes[0].plot(tlist, electron_z, label=f'A={A}')
-    axes[1].plot(tlist, nuclear_z, label=f'A={A}')
-    axes[2].plot(tlist, electron_z + nuclear_z, label=f'A={A}')
-
+    axes[1].plot(tlist, electron_x, label=f'A={A}')
+    axes[1].plot(tlist, electron_y, label=f'A={A}')
+    axes[1].plot(tlist, electron_z, label=f'A={A}')
+    
+    axes[2].plot(tlist, nuclear_x, label=f'A={A}')
+    axes[2].plot(tlist, nuclear_y, label=f'A={A}')
+    axes[2].plot(tlist, nuclear_z, label=f'A={A}')
+ 
 axes[0].set_xlabel('Time')
 axes[0].set_ylabel('<Sz>')
 axes[0].set_title('Electron Spin Z-Component')
