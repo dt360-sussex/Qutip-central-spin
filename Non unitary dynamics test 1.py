@@ -8,7 +8,7 @@ from scipy.constants import pi
 # Define parameters
 # Using units where hbar = 1, all parameters below are in Hz
 
-N = 2  # Number of nuclear spins in the bath
+N = 10  # Number of nuclear spins in the bath
 A= 200e3    #Hyperfine coupling energy
 nu_e = 15e6   # Electron Larmor frequency
 nu_n = 2e6   # Nuclear Larmor frequency
@@ -21,8 +21,8 @@ n_steps = 5000  # Number of time steps
 
 #Define the parameter sweeps for each simulation 
 num_params = 1                   # Number of parameters to sweep over (0, 1, or 2)
-param_names = ['nu_RF_Amplitude', 'nu_RF']     # Names of parameters to sweep over, will only sweep over the first num_params parameters
-param_ranges = [(0, 5e4, 40), (0, 5e6, 40)]  # List of tuples, where each tuple defines the range (start, stop, num) for a parameter
+param_names = ['t_max', 'nu_RF']     # Names of parameters to sweep over, will only sweep over the first num_params parameters
+param_ranges = [(1e-9, 40e-6, 40 0), (0, 2.5e6, 20)]  # List of tuples, where each tuple defines the range (start, stop, num) for a parameter
 
 # num_params = 2                   # Number of parameters to sweep over (0, 1, or 2)
 # param_names = ['nu_RF_Amplitude', 'nu_RF']     # Names of parameters to sweep over, will only sweep over the first num_params parameters
@@ -30,7 +30,7 @@ param_ranges = [(0, 5e4, 40), (0, 5e6, 40)]  # List of tuples, where each tuple 
 
 # Decoherence parameters
 unitary_evolution = True # Set to True to use sesolve for unitary evolution, False to use mcsolve for non-unitary evolution
-n_traj = 200 # Number of trajectories for Monte Carlo simulation
+n_traj = 2000 # Number of trajectories for Monte Carlo simulation
 gamma_relax_e       =   1e4 
 gamme_dephase_e     =   1e4
 gamma_relax_n       =   1e4
@@ -49,7 +49,7 @@ Ix = 0.5*sigmax()
 Iy = 0.5*sigmay()
 Iz = 0.5*sigmaz()
 
-def RF_pulse_envelope(tlist, t_mean=10e-6, t_width=4e-6):
+def RF_pulse_envelope(tlist,t_max, t_mean=10e-6, t_width=4e-6):
     # return 1e5*np.exp(-((tlist-t_mean)/t_width)**2)
     return (1-np.cos(2*pi*tlist/(t_max)))
 
@@ -109,7 +109,7 @@ def define_initial_state(N, initial_electron_spin=0, initial_nuclear_spin=0, ran
 
     return tensor([electron_initial] + nuclear_initial)
 
-def define_hamiltonian(nu_RF_Amplitude,A, nu_e, nu_n, N,nu_RF, tlist):
+def define_hamiltonian(nu_RF_Amplitude,A, nu_e, nu_n, N,nu_RF, tlist, t_max):
     """
     Define the Hamiltonian for the system as a QobjEvo.
     
@@ -162,8 +162,8 @@ def define_hamiltonian(nu_RF_Amplitude,A, nu_e, nu_n, N,nu_RF, tlist):
     # QobjEvo is defined as a list of quantum objects (which must all be the same dimensions), tuples must be of the form (Qobj, list of coefficients)
     H = QobjEvo(
         [H_zeeman_e + H_zeeman_n + H_hyperfine, 
-         [H_RF_x, 2*pi*nu_RF_Amplitude*RF_pulse_envelope(tlist)*np.cos(2*pi*nu_RF*tlist)], 
-         [H_RF_y, -2*pi*nu_RF_Amplitude*RF_pulse_envelope(tlist)*np.sin(2*pi*nu_RF*tlist)]],
+         [H_RF_x, 2*pi*nu_RF_Amplitude*RF_pulse_envelope(tlist, t_max)*np.cos(2*pi*nu_RF*tlist)], 
+         [H_RF_y, -2*pi*nu_RF_Amplitude*RF_pulse_envelope(tlist, t_max)*np.sin(2*pi*nu_RF*tlist)]],
         tlist=tlist
     )
 
@@ -254,6 +254,7 @@ def calculate_expectation_values(params, tlist, observables, unitary_evolution=T
     nu_RF = params['nu_RF']
     N = params['N']
     psi0 = params['psi0']
+    t_max = params['t_max']
 
     n_traj = params['n_traj']
     gamma_dephase_e = params['gamma_dephase_e']
@@ -262,7 +263,7 @@ def calculate_expectation_values(params, tlist, observables, unitary_evolution=T
     gamma_relax_n = params['gamma_relax_n']
 
     # Call the time dependent hamiltonian with the given parameters
-    H = define_hamiltonian(nu_RF_Amplitude, A, nu_e, nu_n, N, nu_RF, tlist)
+    H = define_hamiltonian(nu_RF_Amplitude, A, nu_e, nu_n, N, nu_RF, tlist, t_max)
 
     collapse_operators=define_collapse_operators(N, gamma_relax_e, gamma_dephase_e, gamma_relax_n, gamma_dephase_n)
 
@@ -305,7 +306,7 @@ def plot_results(results, tlist, num_params, param_names):
     axes[0].set_xlabel('Time')
     axes[0].set_ylabel('RF intensity')
     axes[0].set_title('RF')
-    axes[0].plot(tlist, nu_RF_Amplitude*RF_pulse_envelope(tlist)*np.cos(2*pi*nu_RF*tlist), label='RF_x')
+    axes[0].plot(tlist, nu_RF_Amplitude*RF_pulse_envelope(tlist,t_max)*np.cos(2*pi*nu_RF*tlist), label='RF_x')
 
     axes[1].set_xlabel('Time')
     axes[1].set_ylabel('<Total Nuclear Sz>')
@@ -413,6 +414,7 @@ base_params = {
     'nu_RF': nu_RF,
     'N': N,
     'psi0': psi0,
+    't_max': t_max,
     'n_traj': n_traj,
     'gamma_dephase_e': gamme_dephase_e,
     'gamma_relax_e': gamma_relax_e,
