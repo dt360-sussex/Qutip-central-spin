@@ -19,7 +19,7 @@ nu_n = 2e6   # Nuclear Larmor frequency
 nu_RF = 1.9e6   # RF carrier frequency
 nu_RF_Amplitude=2.5e4   # RF amplitude
 
-
+testchange=True
 
 t_max = 20e-6  # Simulation time
 n_steps = 5000  # Number of time steps
