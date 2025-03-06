@@ -443,8 +443,6 @@ def main():
     # Start a local Dask client
     dask.config.set(scheduler='threads') 
     client = Client("tcp://192.168.1.101:8676", )
-    # Scatter the params_list to distribute it across the workers
-    # params_futures = client.scatter(params_list, broadcast=True)
 
     # Use client.map to parallelize the computation
     futures = client.map(lambda params: calculate_expectation_values(params, tlist, observables, unitary_evolution), params_list)# Gather the results
